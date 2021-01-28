@@ -164,7 +164,7 @@ class Dependencies:
 
         markup_file = os.path.join(out_dir, "dependencies.mermaid")
         print(f"Writing {markup_file}")
-        with open(markup_file, "a") as f:
+        with open(markup_file, "w") as f:
             f.write(markup)
 
         cmd = ["mmdc", "--input", markup_file, "--output", os.path.join(out_dir, "dependencies.svg")]
