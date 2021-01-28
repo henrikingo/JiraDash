@@ -21,10 +21,6 @@ def entry_point(my_config):
     setfix = SetFixVersion(my_config)
     setfix.set_fixversion()
 
-def _get_version_name(versions):
-    for version in versions:
-        yield version['name']
-
 class SetFixVersion:
     def __init__(self, my_config):
         self.conf = my_config

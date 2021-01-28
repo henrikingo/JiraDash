@@ -29,6 +29,7 @@ Create following configuration file in `~/.config/JiraDash`:
     jira-token=XXXXXXXXXXXXXXXX
     jira-project=WIDGET
 
+To plot various graphs, you need to install [mermaid-cli](https://github.com/mermaid-js/mermaid-cli).
 
 ## Automation tools
 
@@ -37,3 +38,10 @@ Create following configuration file in `~/.config/JiraDash`:
 Set fixVersions field for all (not closed) issues from the epic they belong to. The idea is that
 project manager can manage the fixVersions field purely on the epic level, and individual issues
 get automatically set.
+
+
+## Dashboards
+
+`./JiraDash dependencies --out-dir`
+
+List all epics, group by component and create a dependency graph by following the "Depends on" links.

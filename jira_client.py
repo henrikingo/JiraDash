@@ -27,7 +27,7 @@ class JiraClient:
             jql = f"project = {self.conf['jira_project'][0]}"
             results = self.jira.jql(jql, limit=1)
         except HTTPError as e:
-            print("Error connecting to Jira.")
+            print("Error connecting to Jira. Please check username and token before anything else.")
             print(e)
             print(e.response.text)
 
