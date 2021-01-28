@@ -1,4 +1,4 @@
-#!/bin/python3
+#!/usr/bin/python3
 """
 Set fix version for issues from the Epic they belong to.
 

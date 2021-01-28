@@ -1,4 +1,4 @@
-#!/bin/python3
+#!/usr/bin/python3
 """
 Create a graph using the "depends on" links and draw a SVG using mermaid-cli syntax.
 
