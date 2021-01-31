@@ -39,7 +39,6 @@ class SetFixVersion:
             epic_name = epic['fields'][CUSTOM_FIELD['Epic Name']]
             epic_fixversions = epic['fields']['fixVersions']
             jql = f"type != Epic AND project = {project} AND 'Epic Link' = '{epic_name}' AND statusCategory != Done"
-            #jql = f"type != Epic AND project = {project} AND 'Epic Link' = '{epic_name}'"
             issues_in_epic = self.jira.jql(jql, limit=100000)
             print(f"Setting fixVersions for {len(issues_in_epic['issues'])} issues in '{epic_name}' epic.")
             for issue in issues_in_epic['issues']:

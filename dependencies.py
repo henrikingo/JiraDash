@@ -33,8 +33,17 @@ class Dependencies:
     def get_and_draw(self):
         for project in self.conf['jira_project']:
             graph = self.get_issues(project)
+
             markup = self.draw_group(graph)
-            self.exec_mermaid(markup)
+            self.exec_mermaid(markup, "dependencies")
+            # Backward compatibility
+            self.exec_mermaid(markup, "dependencies")
+
+            csv = self.gantt_csv(graph, project)
+            self.write_csv(csv, f"{project}_gantt")
+
+            csv = self.components_csv(graph, project)
+            self.write_csv(csv, f"{project}_components")
 
     def get_issues(self, project):
         jql = f"type = Epic AND project = {project}"
@@ -51,17 +60,20 @@ class Dependencies:
 
             key = epic['key']
             epic_name = epic['fields'][CUSTOM_FIELD['Epic Name']]
+            points = epic['fields'][CUSTOM_FIELD['Story Points']]
+            points = points if points else 0.0
             summary = epic['fields']['summary']
             status_category = epic['fields']['status']['statusCategory']['name']
             epic_url = self.conf['jira_server'] + "/browse/" + key
             component = epic['fields']['components']
             component = component.pop() if component else {'name': "*"}
             component = component['name'].replace(" ", "_")
-
+            fixVersions = epic['fields']['fixVersions']
+            fixVersions = [v['name'] for v in fixVersions]
 
             epic_name = _safe_chars(epic_name)
 
-            graph[key] = {"name":epic_name, "url":epic_url, "deps":[], "summary": summary, "statusCategory": status_category, "component":component}
+            graph[key] = {"name":epic_name, "url":epic_url, "deps":[], "summary": summary, "statusCategory": status_category, "component":component, "points": points, "fixVersions": fixVersions}
             issuelinks = epic['fields']['issuelinks']
 
             for link in issuelinks:
@@ -158,18 +170,67 @@ class Dependencies:
         css_class = obj['statusCategory'].replace(" ", "")
         return css_class
 
-    def exec_mermaid(self, markup):
+    def exec_mermaid(self, markup, markup_file_base):
         out_dir = self.conf['out_dir']
         mkdir_p(out_dir)
 
-        markup_file = os.path.join(out_dir, "dependencies.mermaid")
+        markup_file = os.path.join(out_dir, f"{markup_file_base}.mermaid")
         print(f"Writing {markup_file}")
         with open(markup_file, "w") as f:
             f.write(markup)
 
-        cmd = ["mmdc", "--input", markup_file, "--output", os.path.join(out_dir, "dependencies.svg")]
+        cmd = ["mmdc", "--input", markup_file, "--output", os.path.join(out_dir, f"{markup_file_base}.svg")]
         print(cmd)
         subprocess.run(cmd)
+
+    def gantt_csv(self, graph, project):
+        components = set()
+        # initialize
+        for obj in graph.values():
+            components.add(obj['component'])
+        components = _sort_by_depth(components, graph)
+
+        head = f"{project}\nComponent\tEpic\tFix version\tEstimate\tResources allocated\tSprints->\n"
+        sprints ="\t\t\t\t\n"  # Add sprints when we know how many there are
+
+        body = ""
+        for component in components:
+            body += f"\n{component}\n"
+            for key in _sort_epics_by_depth(component, graph):
+                obj = graph[key]
+                line = f"\t{key} {obj['name']}\t{str(obj['fixVersions'])}\t{obj['points']}\n"
+                body += line
+
+        return head + sprints + body
+
+    def write_csv(self, csv, csv_file_base):
+        out_dir = self.conf['out_dir']
+        mkdir_p(out_dir)
+
+        csv_file = os.path.join(out_dir, f"{csv_file_base}.csv")
+        print(f"Writing {csv_file}")
+        with open(csv_file, "w") as f:
+            f.write(csv)
+
+    def components_csv(self, graph, project):
+        components = set()
+        # initialize
+        for obj in graph.values():
+            components.add(obj['component'])
+        components = _sort_by_depth(components, graph)
+
+        head = f"{project}\nComponent\tEstimate\tResources allocated\tSprints->\n"
+        sprints ="\t\t\t\t\n"  # Add sprints when we know how many there are
+
+        body = "Totals:\n"
+        for component in components:
+            points = 0.0
+            for key in _sort_epics_by_depth(component, graph):
+                points += graph[key]['points']
+            body += f"{component}\t{points}\n"
+
+        return head + sprints + body
+
 
 def _safe_chars(string):
     return re.sub(r'\W', " ", string)
@@ -187,6 +248,16 @@ def _component_depth(component, graph):
             if new_depth < depth:
                 depth = new_depth
     return depth
+
+def _sort_epics_by_depth(component, graph):
+    pairs = []
+    for key, obj in graph.items():
+        if obj['component'] != component:
+            continue
+        pairs.append((key, _depth(graph, obj)))
+
+    pairs.sort(key = lambda x: x[1])
+    return [epic[0] for epic in pairs]
 
 def _sort_by_depth(components, graph):
     """

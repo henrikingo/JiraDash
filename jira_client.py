@@ -5,6 +5,7 @@ from atlassian import Jira
 # Probably I can query these from Jira somehow, but for now it is easiest to just hard code the ones we use:
 CUSTOM_FIELD = {
     "Epic Name": "customfield_10841",
+    "Story Points": "customfield_10013",
 }
 
 
