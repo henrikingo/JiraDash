@@ -7,6 +7,7 @@ from requests import HTTPError
 COMMANDS = [
     "fixversion",
     "dependencies",
+    "gantt",
 ]
 
 
@@ -41,6 +42,7 @@ class MyConfig:
         p.add('--jira-token', help="Jira API token", required=True)
         p.add('--jira-server', help="Jira server URL", required=True)
         p.add('--jira-project', help="Jira project", required=True, action='append')
+        p.add('--jira-filter', help="Filter conditions to add to Jira query. Ex: 'fixVersions = alpha1'", action='append')
 
         p.add('--out-dir', '-o', help="Directory where to output graphs", default="mermaid_out")
 

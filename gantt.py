@@ -3,7 +3,9 @@
 Create a graph using the "depends on" links and draw a SVG using mermaid-cli syntax.
 
 """
-
+import dateutil.parser
+import dateutil.relativedelta
+import datetime
 import errno
 from jira_client import JiraClient, CUSTOM_FIELD
 from requests import HTTPError
@@ -13,11 +15,11 @@ import subprocess
 import sys
 
 def entry_point(my_config):
-    print(f"Creating dependency diagram of Epics in project(s): {my_config['jira_project']}")
-    deps = Dependencies(my_config)
+    print(f"Creating gantt chart of Epics in project(s): {my_config['jira_project']}")
+    deps = Gantt(my_config)
     deps.get_and_draw()
 
-class Dependencies:
+class Gantt:
     styles = """    classDef ToDo fill:#fff,stroke:#999,stroke-width:1px,color:#777;
     classDef InProgress fill:#7a7,stroke:#060,stroke-width:3px,color:#000;
     classDef Done fill:#999,stroke:#222,stroke-width:3px,color:#000;
@@ -31,30 +33,14 @@ class Dependencies:
         self._keys = []
 
     def get_and_draw(self):
-        for project in self.conf['jira_project'] if self.conf['jira_project'] else []:
-            base = project
-            for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
-                base += "_" + _safe_chars(jira_filter).replace(" ", "_")
-
+        for project in self.conf['jira_project']:
             graph = self.get_issues(project)
 
-            markup = self.draw_group(graph)
-            self.exec_mermaid(markup, f"{base}_dependencies")
-            # Backward compatibility
-            self.exec_mermaid(markup, "dependencies")
-
-            csv = self.gantt_csv(graph, project)
-            self.write_csv(csv, f"{base}_gantt")
-
-            csv = self.components_csv(graph, project)
-            self.write_csv(csv, f"{base}_components")
+            markup = self.draw_group(graph, project)
+            self.exec_mermaid(markup, f"{project}_gantt")
 
     def get_issues(self, project):
         jql = f"type = Epic AND project = {project}"
-        if self.conf['jira_filter']:
-            for filter in self.conf['jira_filter']:
-                jql += f" AND {filter}"
-
         print("Jira query: " + jql)
         epics = self.jira.jql(jql, limit=10000)
         graph = {}
@@ -75,14 +61,28 @@ class Dependencies:
             status_category = epic['fields']['status']['statusCategory']['name']
             epic_url = self.conf['jira_server'] + "/browse/" + key
             component = epic['fields']['components']
-            component = component.pop() if component else {'name': "*"}
+            component = component.pop() if component else {'name': "General"}
             component = component['name'].replace(" ", "_")
             fixVersions = epic['fields']['fixVersions']
             fixVersions = [v['name'] for v in fixVersions]
 
             epic_name = _safe_chars(epic_name)
 
-            graph[key] = {"name":epic_name, "url":epic_url, "deps":[], "summary": summary, "statusCategory": status_category, "component":component, "points": points, "fixVersions": fixVersions}
+            start_date = None
+            if status_category == "In Progress":
+                start_date = dateutil.parser.parse(epic['fields']['statuscategorychangedate'])
+
+            resolution_date = epic['fields']['resolutiondate']
+            if resolution_date:
+                resolution_date = dateutil.parser.parse(resolution_date)
+                # TODO: Jira can also track actual time spent. Now we just use the estimate as the duration.
+                start_date = resolution_date - dateutil.relativedelta.relativedelta(months=points)
+            else:
+                if start_date:
+                    resolution_date = start_date + dateutil.relativedelta.relativedelta(months=int(points))
+
+            graph[key] = {"name":epic_name, "url":epic_url, "deps":[], "summary": summary, "statusCategory": status_category, "component":component, "points": points, "fixVersions": fixVersions,
+                          "start_date": start_date, "resolution_date": resolution_date}
             issuelinks = epic['fields']['issuelinks']
 
             for link in issuelinks:
@@ -93,72 +93,69 @@ class Dependencies:
 
         return graph
 
-    def draw(self, graph):
-        output = "graph RL;\n"
-        urls = ""
-        classes = ""
-        start_node = "start"
+    def draw_group(self, graph, project):
+        output = """gantt
+    dateFormat  YYYY-MM-DD
+    title       """ + project + """
 
-        for key, obj in graph.items():
-            urls += f"    click {key} \"{obj['url']}\" \"{obj['summary']}\"\n"
-            classes += f"    class {key} {self._get_css_class(obj)}\n"
-            if obj['deps']:
-                for dep in obj['deps']:
-                    output += f"    {key}[{key} {obj['name']}]-->{dep}\n"
-                    #output += f"    {key}[{key}]-->{dep}\n"
-            else:
-                output += f"    {key}[{key} {obj['name']}]-->{start_node}(({start_node}))\n"
-                #output += f"    {key}[{key}]-->{start_node}(({start_node}))\n"
-        output += urls + classes + self.styles
-        #output += classes + self.styles
-        print(output)
+"""
 
-    def draw_group(self, graph):
-        output = "graph RL;\n"
-        subgraphs = set()
+        components = set()
         # initialize
         for obj in graph.values():
-            subgraphs.add(obj['component'])
+            components.add(obj['component'])
 
         urls = ""
         classes = ""
         start_node = "start"
 
-        output += f"    subgraph *\n"
-        output += f"    {start_node}(({start_node}))\n"
-        for key, obj in graph.items():
-            if obj['component'] != "*":
-                continue
+        for component in _sort_by_depth(components, graph):
+            output += f"    section {component}\n"
 
-            urls += f"    click {key} \"{obj['url']}\" \"{obj['summary']}\"\n"
-            classes += f"    class {key} {self._get_css_class(obj)}\n"
-            if obj['deps']:
-                for dep in obj['deps']:
-                    output += f"    {key}[{key} {obj['name']}]-->{dep}\n"
-            else:
-                output += f"    {key}[{key} {obj['name']}]-->{start_node}(({start_node}))\n"
-        output += "    end\n"
-
-        for component in _sort_by_depth(subgraphs, graph):
-            if component == "*":
-                continue
-            output += f"    subgraph {component}\n"
-
-            for key, obj in graph.items():
+            for key in _sort_epics_by_depth(component, graph):
+                obj = graph[key]
                 if obj['component'] != component:
                     continue
 
-                urls += f"    click {key} \"{obj['url']}\" \"{obj['summary']}\"\n"
-                classes += f"    class {key} {self._get_css_class(obj)}\n"
+                line = "    %-50s:" % f"{key} {obj['name']}"
+                status = ""
+                if obj['statusCategory'] == "Done":
+                    status = "done, "
+                elif obj['statusCategory'] == "In Progress":
+                    status = "active, "
+
+                line += "%-10s" % status
+                line += key + ", "
+
+                deps = ""
                 if obj['deps']:
+                    deps += "after"
                     for dep in obj['deps']:
-                        output += f"    {key}[{key} {obj['name']}]-->{dep}\n"
+                        deps += " " + dep
+                    deps += ", "
+                line += deps
+
+                if not deps:
+                    if obj['start_date']:
+                        line += obj['start_date'].strftime("%Y-%m-%d") + ", "
+                        #line += datetime.datetime.isoformat(obj['start_date']) + ", "
+                        if obj['resolution_date']:
+                            line += obj['resolution_date'].strftime("%Y-%m-%d")
+                            #line += datetime.datetime.isoformat(obj['resolution_date'])
+                        else:
+                            line += str(int(obj['points']*30)) + "d"
+                    else:
+                        line += str(int(obj['points']*30)) + "d"
                 else:
-                    output += f"    {key}[{key} {obj['name']}]-->{start_node}(({start_node}))\n"
+                    line += str(int(obj['points']*30)) + "d"
 
-            output += "    end\n"
+                output += line + "\n"
 
-        output += urls + classes + self.styles
+                urls += f"    click {key} href \"{obj['url']}\"\n"
+
+            output += "\n"
+
+        output += urls
         #print(output)
         return output
 
@@ -270,9 +267,9 @@ def _sort_epics_by_depth(component, graph):
 
 def _sort_by_depth(components, graph):
     """
-    mermaid with subgraphs sometimes places a node in the wrong subgraph. The same as a dependant's,
+    mermaid with sections sometimes places a node in the wrong subgraph. The same as a dependant's,
     instead of where the node itself is defined. It seems to help to sort the graph such that
-    the main graph is first (start and *) and then subgraphs that are closest to start next. When
+    the main graph is first (start and *) and then sections that are closest to start next. When
     there are many paths from a subgraph to start, we count the shortest path.
     """
     pairs = [(component, _component_depth(component, graph)) for component in components]
