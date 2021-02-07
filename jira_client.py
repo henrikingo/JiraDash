@@ -1,6 +1,7 @@
 #!/bin/python3
 
 from atlassian import Jira
+from requests import HTTPError
 
 # Probably I can query these from Jira somehow, but for now it is easiest to just hard code the ones we use:
 CUSTOM_FIELD = {

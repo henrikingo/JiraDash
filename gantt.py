@@ -33,14 +33,29 @@ class Gantt:
         self._keys = []
 
     def get_and_draw(self):
-        for project in self.conf['jira_project']:
+        for project in self.conf['jira_project'] if self.conf['jira_project'] else []:
+            base = project
+            for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
+                base += "_" + _safe_chars(jira_filter).replace(" ", "_")
+            if self.conf.args.groupby:
+                base += "_" + self.conf.args.groupby
+
             graph = self.get_issues(project)
 
             markup = self.draw_group(graph, project)
-            self.exec_mermaid(markup, f"{project}_gantt")
+            self.exec_mermaid(markup, f"{base}_gantt")
+
+            csv = self.gantt_csv(graph, project)
+            self.write_csv(csv, f"{base}_gantt")
+
+            csv = self.groups_csv(graph, project)
+            self.write_csv(csv, f"{base}_components")
 
     def get_issues(self, project):
         jql = f"type = Epic AND project = {project}"
+        if self.conf['jira_filter']:
+            for filter in self.conf['jira_filter']:
+                jql += f" AND {filter}"
         print("Jira query: " + jql)
         epics = self.jira.jql(jql, limit=10000)
         graph = {}
@@ -65,6 +80,7 @@ class Gantt:
             component = component['name'].replace(" ", "_")
             fixVersions = epic['fields']['fixVersions']
             fixVersions = [v['name'] for v in fixVersions]
+            fixVersions = fixVersions.pop() if fixVersions else "0.0"
 
             epic_name = _safe_chars(epic_name)
 
@@ -81,7 +97,7 @@ class Gantt:
                 if start_date:
                     resolution_date = start_date + dateutil.relativedelta.relativedelta(months=int(points))
 
-            graph[key] = {"name":epic_name, "url":epic_url, "deps":[], "summary": summary, "statusCategory": status_category, "component":component, "points": points, "fixVersions": fixVersions,
+            graph[key] = {"name":epic_name, "url":epic_url, "deps":[], "summary": summary, "statusCategory": status_category, "components":component, "points": points, "fixVersions": fixVersions,
                           "start_date": start_date, "resolution_date": resolution_date}
             issuelinks = epic['fields']['issuelinks']
 
@@ -99,22 +115,26 @@ class Gantt:
     title       """ + project + """
 
 """
-
-        components = set()
+        groupby = self.conf.args.groupby
+        groups = set()
         # initialize
-        for obj in graph.values():
-            components.add(obj['component'])
+        if groupby:
+            for obj in graph.values():
+                groups.add(obj[groupby])
+        else:
+            # Mermaid Gantt chart must have sections. Default section name when no grouping used.
+            groups = {"Epics"}
 
         urls = ""
         classes = ""
         start_node = "start"
 
-        for component in _sort_by_depth(components, graph):
-            output += f"    section {component}\n"
+        for group in _sort_by_depth(groups, groupby, graph):
+            output += f"    section {group}\n"
 
-            for key in _sort_epics_by_depth(component, graph):
+            for key in _sort_epics_by_depth(group, groupby, graph):
                 obj = graph[key]
-                if obj['component'] != component:
+                if groupby and obj[groupby] != group:
                     continue
 
                 line = "    %-50s:" % f"{key} {obj['name']}"
@@ -190,19 +210,24 @@ class Gantt:
         subprocess.run(cmd)
 
     def gantt_csv(self, graph, project):
-        components = set()
+        groupby = self.conf.args.groupby
+        groups = set()
         # initialize
-        for obj in graph.values():
-            components.add(obj['component'])
-        components = _sort_by_depth(components, graph)
+        if groupby:
+            for obj in graph.values():
+                groups.add(obj[groupby])
+        else:
+            groups = {"Epics"}
 
-        head = f"{project}\nComponent\tEpic\tFix version\tEstimate\tResources allocated\tSprints->\n"
+        groups = _sort_by_depth(groups, groupby, graph)
+
+        head = f"{project}\n{groupby}\tEpic\tFix version\tEstimate\tResources allocated\tSprints->\n"
         sprints ="\t\t\t\t\n"  # Add sprints when we know how many there are
 
         body = ""
-        for component in components:
-            body += f"\n{component}\n"
-            for key in _sort_epics_by_depth(component, graph):
+        for group in groups:
+            body += f"\n{group}\n"
+            for key in _sort_epics_by_depth(group, groupby, graph):
                 obj = graph[key]
                 line = f"\t{key} {obj['name']}\t{str(obj['fixVersions'])}\t{obj['points']}\n"
                 body += line
@@ -218,22 +243,26 @@ class Gantt:
         with open(csv_file, "w") as f:
             f.write(csv)
 
-    def components_csv(self, graph, project):
-        components = set()
+    def groups_csv(self, graph, project):
+        groupby = self.conf.args.groupby
+        groups = set()
         # initialize
-        for obj in graph.values():
-            components.add(obj['component'])
-        components = _sort_by_depth(components, graph)
+        if groupby:
+            for obj in graph.values():
+                groups.add(obj[groupby])
+        else:
+            groups = {"Epics"}
+        groups = _sort_by_depth(groups, groupby, graph)
 
-        head = f"{project}\nComponent\tEstimate\tResources allocated\tSprints->\n"
+        head = f"{project}\n{groupby}\tEstimate\tResources allocated\tSprints->\n"
         sprints ="\t\t\t\t\n"  # Add sprints when we know how many there are
 
         body = "Totals:\n"
-        for component in components:
+        for group in groups:
             points = 0.0
-            for key in _sort_epics_by_depth(component, graph):
+            for key in _sort_epics_by_depth(group, groupby, graph):
                 points += graph[key]['points']
-            body += f"{component}\t{points}\n"
+            body += f"{group}\t{points}\n"
 
         return head + sprints + body
 
@@ -246,35 +275,35 @@ def _depth(graph, epic, d=0):
         return _depth(graph, graph[epic['deps'][0]], d+1)
     return d
 
-def _component_depth(component, graph):
+def _group_depth(group, groupby, graph):
     depth = 9999
     for key, obj in graph.items():
-        if component == obj['component']:
+        if (not groupby) or group == obj[groupby]:
             new_depth = _depth(graph, obj)
             if new_depth < depth:
                 depth = new_depth
     return depth
 
-def _sort_epics_by_depth(component, graph):
+def _sort_epics_by_depth(group, groupby, graph):
     pairs = []
     for key, obj in graph.items():
-        if obj['component'] != component:
+        if groupby and obj[groupby] != group:
             continue
         pairs.append((key, _depth(graph, obj)))
 
     pairs.sort(key = lambda x: x[1])
     return [epic[0] for epic in pairs]
 
-def _sort_by_depth(components, graph):
+def _sort_by_depth(groups, groupby, graph):
     """
     mermaid with sections sometimes places a node in the wrong subgraph. The same as a dependant's,
     instead of where the node itself is defined. It seems to help to sort the graph such that
     the main graph is first (start and *) and then sections that are closest to start next. When
     there are many paths from a subgraph to start, we count the shortest path.
     """
-    pairs = [(component, _component_depth(component, graph)) for component in components]
+    pairs = [(group, _group_depth(group, groupby, graph)) for group in groups]
     pairs.sort(key = lambda x: x[1])
-    return [component[0] for component in pairs]
+    return [group[0] for group in pairs]
 
 def mkdir_p(path):
     try:
