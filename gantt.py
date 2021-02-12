@@ -276,11 +276,14 @@ def _depth(graph, epic, d=0):
     return d
 
 def _group_depth(group, groupby, graph):
-    depth = 9999
+    use_shortest = True if groupby != "fixVersions" else False
+    depth = 9999 if use_shortest else -9999
     for key, obj in graph.items():
         if (not groupby) or group == obj[groupby]:
             new_depth = _depth(graph, obj)
-            if new_depth < depth:
+            if new_depth < depth and use_shortest:
+                depth = new_depth
+            elif new_depth > depth and not use_shortest:
                 depth = new_depth
     return depth
 
@@ -295,12 +298,6 @@ def _sort_epics_by_depth(group, groupby, graph):
     return [epic[0] for epic in pairs]
 
 def _sort_by_depth(groups, groupby, graph):
-    """
-    mermaid with sections sometimes places a node in the wrong subgraph. The same as a dependant's,
-    instead of where the node itself is defined. It seems to help to sort the graph such that
-    the main graph is first (start and *) and then sections that are closest to start next. When
-    there are many paths from a subgraph to start, we count the shortest path.
-    """
     pairs = [(group, _group_depth(group, groupby, graph)) for group in groups]
     pairs.sort(key = lambda x: x[1])
     return [group[0] for group in pairs]

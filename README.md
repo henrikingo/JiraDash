@@ -37,7 +37,7 @@ To plot various graphs, you need to install [mermaid-cli](https://github.com/mer
 
 Set fixVersions field for all (not closed) issues from the epic they belong to. The idea is that
 project manager can manage the fixVersions field purely on the epic level, and individual issues
-get automatically set.
+get automatically set. NOTE: Will erase existing fixversions.
 
 
 ## Dashboards

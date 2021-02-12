@@ -46,7 +46,8 @@ class SetFixVersion:
                 # It's a list
                 fixversions = issue['fields']['fixVersions']
                 # It doesn't matter that the same version now may appear twice. Jira is fine and de-duplicates them.
-                new_fixversions = epic_fixversions + fixversions
+                new_fixversions = epic_fixversions
+                # new_fixversions = epic_fixversions + fixversions
                 set_fields = {"fixVersions": new_fixversions}
                 try:
                     self.jira.update_issue_field(key, set_fields)
