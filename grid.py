@@ -120,15 +120,24 @@ class Grid:
                 jql += f" AND {filter}"
         jql += " ORDER BY key"
         print("Jira query: " + jql)
-        issues = self.jira.jql(jql, limit=10000)
+        issues = []
+        new_issues = self.jira.get_all_project_issues(project, limit=100, start=0)
+        start_at = 101
+        while new_issues:
+            issues.extend(new_issues)
+            new_issues = self.jira.get_all_project_issues(project, limit=100, start=start_at)
+            start_at += 100
+
         by_epic = {}
 
-        for issue in issues['issues']:
+        count = 0
+        for issue in issues:
             # Skip issues that are closed as duplicates of other epics or won't fix
             if issue['fields']['resolution'] and (
                 issue['fields']['resolution']['name'] == "Duplicate" or 
                 issue['fields']['resolution']['name'] == "Won't Fix"):
                continue
+            count += 1
 
             key = issue['key']
             epic = issue['fields'][CUSTOM_FIELD['Epic']]
@@ -163,10 +172,14 @@ class Grid:
 
             if not epic in by_epic:
                 by_epic[epic] = []
+            if key == "STAR-170":
+                print(key + " in epic " + epic)
 
             by_epic[epic].append({"url":issue_url, "deps":[], "summary": summary, "statusCategory": status_category, "components":component, "points": points, "fixVersions": fixVersions,
                           "start_date": start_date, "resolution_date": resolution_date, "key": key, "assignee": assignee})
 
+        print(count)
+        print(len(issues))
         return by_epic
 
     def grid_obj(self, graph, project):
