@@ -245,8 +245,8 @@ class Grid:
         head = f"<html>\n<head><title>{project}</title>\n"
         style = """<style type="text/css">
     table td {padding: 5px; font-family: sans-serif; border-top: 1px solid #ddd; width: """ + colwidth + """%;}
-    td div {overflow-x: hidden; height: 2em;}
-    td div a {overflow-x: hidden; overflow-y: hidden; height: 1.4em; display: inline-block;}
+    td div {overflow: hidden; height: 2em;}
+    td div a {overflow: hidden; height: 1.4em; display: inline-block;}
     a.ToDo {text-decoration: none; color: #666;}
     a.InProgress {text-decoration: none; color: #090;}
     a.Done {text-decoration: line-through; color: #333;}
