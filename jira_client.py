@@ -5,6 +5,7 @@ from requests import HTTPError
 
 # Probably I can query these from Jira somehow, but for now it is easiest to just hard code the ones we use:
 CUSTOM_FIELD = {
+    "Epic": "customfield_10840",
     "Epic Name": "customfield_10841",
     "Story Points": "customfield_10013",
 }

@@ -47,11 +47,12 @@ class Grid:
                 base += "_" + self.conf.args.groupby
 
             graph = self.get_issues(project)
+            by_epic = self.get_issues_per_epic(project)
 
             grid = self.grid_obj(graph, project)
             csv = self.grid_csv(grid, project)
             self.write_csv(csv, f"{base}_grid")
-            html = self.grid_html(grid, project)
+            html = self.grid_html(grid, by_epic, project)
             self.write_html(html, f"{base}_grid")
 
     def get_issues(self, project):
@@ -112,6 +113,62 @@ class Grid:
 
         return graph
 
+    def get_issues_per_epic(self, project):
+        jql = f"type != Epic AND project = {project}"
+        if self.conf['jira_filter']:
+            for filter in self.conf['jira_filter']:
+                jql += f" AND {filter}"
+        jql += " ORDER BY key"
+        print("Jira query: " + jql)
+        issues = self.jira.jql(jql, limit=10000)
+        by_epic = {}
+
+        for issue in issues['issues']:
+            # Skip issues that are closed as duplicates of other epics or won't fix
+            if issue['fields']['resolution'] and (
+                issue['fields']['resolution']['name'] == "Duplicate" or 
+                issue['fields']['resolution']['name'] == "Won't Fix"):
+               continue
+
+            key = issue['key']
+            epic = issue['fields'][CUSTOM_FIELD['Epic']]
+            points = issue['fields'][CUSTOM_FIELD['Story Points']]
+            points = points if points else 0.0
+            summary = issue['fields']['summary']
+            assignee = issue['fields']['assignee']
+            assignee = assignee['displayName'] if assignee else ""
+            status_category = issue['fields']['status']['statusCategory']['name']
+            issue_url = self.conf['jira_server'] + "/browse/" + key
+            component = issue['fields']['components']
+            component = component.pop() if component else {'name': "General"}
+            component = component['name'].replace(" ", "_")
+            fixVersions = issue['fields']['fixVersions']
+            fixVersions = [v['name'] for v in fixVersions]
+            fixVersions = fixVersions.pop() if fixVersions else "0.0"
+
+            epic = epic if epic else "No Epic"
+
+            start_date = None
+            if status_category == "In Progress":
+                start_date = dateutil.parser.parse(issue['fields']['statuscategorychangedate'])
+
+            resolution_date = issue['fields']['resolutiondate']
+            if resolution_date:
+                resolution_date = dateutil.parser.parse(resolution_date)
+                # TODO: Jira can also track actual time spent. Now we just use the estimate as the duration.
+                start_date = resolution_date - dateutil.relativedelta.relativedelta(months=points)
+            else:
+                if start_date:
+                    resolution_date = start_date + dateutil.relativedelta.relativedelta(months=int(points))
+
+            if not epic in by_epic:
+                by_epic[epic] = []
+
+            by_epic[epic].append({"url":issue_url, "deps":[], "summary": summary, "statusCategory": status_category, "components":component, "points": points, "fixVersions": fixVersions,
+                          "start_date": start_date, "resolution_date": resolution_date, "key": key, "assignee": assignee})
+
+        return by_epic
+
     def grid_obj(self, graph, project):
         groups = set()
         for obj in graph.values():
@@ -170,29 +227,25 @@ class Grid:
         with open(csv_file, "w") as f:
             f.write(csv)
 
-    def grid_html(self, grid, project):
+    def grid_html(self, grid, by_epic, project):
+        colwidth = str(int(100/(len(self.releases)+1)))
         head = f"<html>\n<head><title>{project}</title>\n"
         style = """<style type="text/css">
-    table td {padding: 5px; font-family: sans-serif;}
-    table td {border-top: 1px solid #ddd;}
+    table td {padding: 5px; font-family: sans-serif; border-top: 1px solid #ddd; width: """ + colwidth + """%;}
+    td div {overflow-x: hidden; height: 2em;}
+    td div a {overflow-x: hidden; height: 1.4em; display: inline-block;}
     a.ToDo {text-decoration: none; color: #666;}
     a.InProgress {text-decoration: none; color: #090;}
     a.Done {text-decoration: line-through; color: #333;}
+
+    td div span {width: 5px; height: 5px; margin-left: 1px; margin-right: 1px; display: inline-block;}
+    td div span.ToDo {border: solid 1px #666;}
+    td div span.InProgress {border: solid 1px #090; background-color: #090;}
+    td div span.Done {border: solid 1px #333; background-color: #333;}
 </style>
 """
 
         table = f"<table>\n<tr><th>{project}</th><th>" + "</th><th>".join(self.releases) + "</th></tr>\n"
-
-        cells = {}
-        for component in grid.keys():
-            cells[component] = {}
-            for rel in self.releases:
-                cells[component][rel] = []
-                if rel in grid[component]:
-                    for key in sorted(grid[component][rel].keys()):
-                        obj = grid[component][rel][key]
-                        cells[component][rel].append(obj)
-
 
         for component in grid.keys():
             table += f"<tr><th>{component}</th>"
@@ -201,11 +254,23 @@ class Grid:
                 for key in sorted(grid[component][rel].keys()):
                     obj = grid[component][rel][key]
 
-                    table += f"<a href=\"{obj['url']}\" class=\"{obj['statusCategory'].replace(' ','')}\">{obj['key']} {obj['name']}</a><br>\n"
+                    table += "<div>\n"
+                    table += f"<a href=\"{obj['url']}\" title=\"{obj['summary']}\" class=\"{obj['statusCategory'].replace(' ','')}\">{obj['key']} {obj['name']}</a><br>\n"
+                    table += self._grid_issues(by_epic, key)
+                    table += "</div>\n"
 
                 table += "</td>\n"
 
         return head + style + "</head>\n<body>\n" + table + "</body>\n</html>"
+
+    def _grid_issues(self, by_epic, epic_key):
+        html = ""
+        if epic_key in by_epic:
+            for issue in by_epic[epic_key]:
+                title = f"{issue['key']} {issue['summary']} [{issue['assignee']}]"
+                html += f"<span class=\"{issue['statusCategory'].replace(' ', '')}\" title=\"{title}\"><a href=\"{issue['url']}\">&nbsp;</a></span>"
+
+        return html
 
     def write_html(self, html, html_file_base):
         out_dir = self.conf['out_dir']
