@@ -8,6 +8,7 @@ COMMANDS = [
     "fixversion",
     "dependencies",
     "gantt",
+    "grid",
 ]
 
 
