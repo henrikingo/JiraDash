@@ -9,6 +9,7 @@ COMMANDS = [
     "dependencies",
     "gantt",
     "grid",
+    "burnup",
 ]
 
 
