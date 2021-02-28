@@ -7,7 +7,7 @@ import dateutil.parser
 import dateutil.relativedelta
 import datetime
 import errno
-from jira_client import JiraClient, CUSTOM_FIELD
+from jiradash.jira_client import JiraClient, CUSTOM_FIELD
 from requests import HTTPError
 import os
 import re

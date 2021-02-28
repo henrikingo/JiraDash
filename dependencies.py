@@ -5,7 +5,7 @@ Create a graph using the "depends on" links and draw a SVG using mermaid-cli syn
 """
 
 import errno
-from jira_client import JiraClient, CUSTOM_FIELD
+from jiradash.jira_client import JiraClient, CUSTOM_FIELD
 from requests import HTTPError
 import os
 import re

@@ -7,7 +7,7 @@ import dateutil.parser
 import dateutil.relativedelta
 import datetime
 import errno
-from jira_client import JiraClient, CUSTOM_FIELD
+from jiradash.jira_model import JiraModel
 import json
 from requests import HTTPError
 import os
@@ -24,11 +24,7 @@ def entry_point(my_config):
 class Burnup:
     def __init__(self, my_config):
         self.conf = my_config
-        self.jira_client = JiraClient(my_config)
-        self.jira_client.conn()
-        self.jira = self.jira_client.jira
-
-        self._keys = []
+        self.model = JiraModel(my_config)
 
     def get_and_draw(self):
         for project in self.conf['jira_project'] if self.conf['jira_project'] else []:
@@ -38,8 +34,8 @@ class Burnup:
             if self.conf.args.groupby:
                 base += "_" + self.conf.args.groupby
 
-            graph = self.get_issues(project)
-            series, date_range = self.generate_series(graph)
+            issues = self.model.get_issues()
+            series, date_range = self.generate_series(issues)
 
             csv = self.burnup_csv(series, date_range, project)
             self.write_csv(csv, f"{base}_burnup")
@@ -47,71 +43,11 @@ class Burnup:
             html = self.burnup_html(series, date_range, project)
             self.write_html(html, f"{base}_burnup")
 
-    def get_issues(self, project):
-        jql = f"type != Epic AND project = {project}"
-        if self.conf['jira_filter']:
-            for filter in self.conf['jira_filter']:
-                jql += f" AND {filter}"
-        jql += " ORDER BY key"
-        print("Jira query: " + jql)
-        issues = []
-        new_issues = self.jira.jql(jql, start=0, limit=100)
-        #new_issues = self.jira.get_all_project_issues(project, limit=100, start=0)
-        start_at = 101
-        while new_issues['issues']:
-            issues.extend(new_issues['issues'])
-            new_issues = self.jira.jql(jql, start=start_at, limit=100)
-            start_at += 100
-            print(len(issues))
 
-        graph = {}
-        for issue in issues:
-            ## Skip epics that are closed as duplicates of other epics or won't fix
-            #if issue['fields']['resolution'] and (
-                #issue['fields']['resolution']['name'] == "Duplicate" or 
-                #issue['fields']['resolution']['name'] == "Won't Fix"):
-               #continue
-
-            key = issue['key']
-            #epic_name = issue['fields'][CUSTOM_FIELD['Epic Name']]
-            points = issue['fields'][CUSTOM_FIELD['Story Points']]
-            points = points if points else 0.0
-            summary = issue['fields']['summary']
-            status_category = issue['fields']['status']['statusCategory']['name']
-            epic_url = self.conf['jira_server'] + "/browse/" + key
-            component = issue['fields']['components']
-            component = component.pop() if component else {'name': "General"}
-            component = component['name'].replace(" ", "_")
-            fixVersions = issue['fields']['fixVersions']
-            fixVersions = [v['name'] for v in fixVersions]
-            fixVersions = fixVersions.pop() if fixVersions else "0.0"
-
-            created = issue['fields']['created']
-            created = dateutil.parser.parse(created) if created else None
-            statuscategorychangedate = issue['fields']['statuscategorychangedate']
-            statuscategorychangedate = dateutil.parser.parse(statuscategorychangedate) if statuscategorychangedate else None
-            resolution_date = issue['fields']['resolutiondate']
-            resolution_date = dateutil.parser.parse(resolution_date) if resolution_date else None
-            start_date = None
-            if status_category == "In Progress":
-                start_date = dateutil.parser.parse(issue['fields']['statuscategorychangedate'])
-
-            graph[key] = {"url":epic_url, "deps":[], "summary": summary, "statusCategory": status_category, "components":component, "points": points, "fixVersions": fixVersions,
-                         "start_date": start_date, "created_date": created, "statuscategorychangedate": statuscategorychangedate, "resolution_date": resolution_date, "key": key}
-            issuelinks = issue['fields']['issuelinks']
-
-            for link in issuelinks:
-                if link['type']['outward'] == 'Depends on' and 'outwardIssue' in link:
-                    dep_key = link['outwardIssue']['key']
-                    if self.key_in_set(dep_key):
-                        graph[key]['deps'].append(dep_key)
-
-        return graph
-
-    def get_minmax(self, graph):
-        created_dates = [obj['created_date'] for obj in graph.values() if obj['created_date']]
-        start_dates = [obj['start_date'] for obj in graph.values() if obj['start_date']]
-        resolution_dates = [obj['resolution_date'] for obj in graph.values() if obj['resolution_date']]
+    def get_minmax(self, issues):
+        created_dates = [obj['created_date'] for obj in issues.values() if obj['created_date']]
+        start_dates = [obj['start_date'] for obj in issues.values() if obj['start_date']]
+        resolution_dates = [obj['resolution_date'] for obj in issues.values() if obj['resolution_date']]
         min_date = min(created_dates + start_dates + resolution_dates)
         max_date = max(created_dates + start_dates + resolution_dates)
         return {'max': max_date, 'min': min_date}
@@ -133,15 +69,15 @@ class Burnup:
 
         return csv
 
-    def generate_series(self, graph):
-        date_range = self.get_minmax(graph)
+    def generate_series(self, issues):
+        date_range = self.get_minmax(issues)
         days = date_range['max'] - date_range['min']
         days = days.days
         date_range['days'] = days
 
         # 3 arrays that have one element per day in date_range
         series = {'issues': [0]*days, 'inprogress': [0]*days, 'resolved': [0]*days}
-        for obj in graph.values():
+        for obj in issues.values():
             series['issues'][ (obj['created_date']-date_range['min']).days - 1] += 1
             if obj['start_date']:
                 series['inprogress'][ (obj['start_date']-date_range['min']).days - 1] += 1
@@ -246,19 +182,6 @@ nv.addGraph(generateGraph);
         print(f"Writing {html_file}")
         with open(html_file, "w") as f:
             f.write(html)
-
-    def get_keys(self, epics):
-        for epic in epics:
-            # Skip epics that are closed as duplicates of other epics or won't fix
-            if epic['fields']['resolution'] and (
-                epic['fields']['resolution']['name'] == "Duplicate" or 
-                epic['fields']['resolution']['name'] == "Won't Fix"):
-               continue
-
-            self._keys.append(epic['key'])
-
-    def key_in_set(self, key):
-        return key in self._keys
 
 def _safe_chars(string):
     return re.sub(r'\W', " ", string)
