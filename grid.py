@@ -42,10 +42,10 @@ class Grid:
             if self.conf.args.groupby:
                 base += "_" + self.conf.args.groupby
 
-            graph = self.model.get_epics()
+            epics = self.model.get_epics()
             by_epic = self.model.get_issues_per_epic()
 
-            grid = self.grid_obj(graph, project)
+            grid = self.grid_obj(epics, project)
             csv = self.grid_csv(grid, project)
             self.write_csv(csv, f"{base}_grid")
             html = self.grid_html(grid, by_epic, project)
@@ -53,11 +53,11 @@ class Grid:
 
 
 
-    def grid_obj(self, graph, project):
+    def grid_obj(self, epics, project):
         groups = set()
-        for obj in graph.values():
+        for obj in epics.values():
             groups.add(obj['components'])
-        groups = _sort_by_depth(groups, 'components', graph)
+        groups = _sort_by_depth(groups, 'components', epics)
 
         grid = {}
         for group in groups:
@@ -65,7 +65,7 @@ class Grid:
             for rel in self.releases:
                 grid[group][rel] = {}
 
-        for key, obj in graph.items():
+        for key, obj in epics.items():
             grid[obj['components']][obj['fixVersions']][key] = obj
 
         return grid
@@ -178,35 +178,35 @@ class Grid:
     def key_in_set(self, key):
         return key in self._keys
 
-def _depth(graph, epic, d=0):
+def _depth(epics, epic, d=0):
     if epic['deps']:
-        return _depth(graph, graph[epic['deps'][0]], d+1)
+        return _depth(epics, epics[epic['deps'][0]], d+1)
     return d
 
-def _group_depth(group, groupby, graph):
+def _group_depth(group, groupby, epics):
     use_shortest = True if groupby != "fixVersions" else False
     depth = 9999 if use_shortest else -9999
-    for key, obj in graph.items():
+    for key, obj in epics.items():
         if (not groupby) or group == obj[groupby]:
-            new_depth = _depth(graph, obj)
+            new_depth = _depth(epics, obj)
             if new_depth < depth and use_shortest:
                 depth = new_depth
             elif new_depth > depth and not use_shortest:
                 depth = new_depth
     return depth
 
-def _sort_epics_by_depth(group, groupby, graph):
+def _sort_epics_by_depth(group, groupby, epics):
     pairs = []
-    for key, obj in graph.items():
+    for key, obj in epics.items():
         if groupby and obj[groupby] != group:
             continue
-        pairs.append((key, _depth(graph, obj)))
+        pairs.append((key, _depth(epics, obj)))
 
     pairs.sort(key = lambda x: x[1])
     return [epic[0] for epic in pairs]
 
-def _sort_by_depth(groups, groupby, graph):
-    pairs = [(group, _group_depth(group, groupby, graph)) for group in groups]
+def _sort_by_depth(groups, groupby, epics):
+    pairs = [(group, _group_depth(group, groupby, epics)) for group in groups]
     pairs.sort(key = lambda x: x[1])
     return [group[0] for group in pairs]
 
