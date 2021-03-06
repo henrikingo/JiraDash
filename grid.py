@@ -7,7 +7,7 @@ import dateutil.parser
 import dateutil.relativedelta
 import datetime
 import errno
-from jiradash.jira_client import JiraClient, CUSTOM_FIELD
+from jiradash.jira_model import JiraModel
 from requests import HTTPError
 import os
 import re
@@ -32,11 +32,7 @@ class Grid:
 
     def __init__(self, my_config):
         self.conf = my_config
-        self.jira_client = JiraClient(my_config)
-        self.jira_client.conn()
-        self.jira = self.jira_client.jira
-
-        self._keys = []
+        self.model = JiraModel(my_config)
 
     def get_and_draw(self):
         for project in self.conf['jira_project'] if self.conf['jira_project'] else []:
@@ -46,8 +42,8 @@ class Grid:
             if self.conf.args.groupby:
                 base += "_" + self.conf.args.groupby
 
-            graph = self.get_issues(project)
-            by_epic = self.get_issues_per_epic(project)
+            graph = self.model.get_epics()
+            by_epic = self.model.get_issues_per_epic()
 
             grid = self.grid_obj(graph, project)
             csv = self.grid_csv(grid, project)
@@ -55,132 +51,7 @@ class Grid:
             html = self.grid_html(grid, by_epic, project)
             self.write_html(html, f"{base}_grid")
 
-    def get_issues(self, project):
-        jql = f"type = Epic AND project = {project}"
-        if self.conf['jira_filter']:
-            for filter in self.conf['jira_filter']:
-                jql += f" AND {filter}"
-        print("Jira query: " + jql)
-        epics = self.jira.jql(jql, limit=10000)
-        graph = {}
-        self.get_keys(epics['issues'])
 
-        for epic in epics['issues']:
-            # Skip epics that are closed as duplicates of other epics or won't fix
-            if epic['fields']['resolution'] and (
-                epic['fields']['resolution']['name'] == "Duplicate" or 
-                epic['fields']['resolution']['name'] == "Won't Fix"):
-               continue
-
-            key = epic['key']
-            epic_name = epic['fields'][CUSTOM_FIELD['Epic Name']]
-            points = epic['fields'][CUSTOM_FIELD['Story Points']]
-            points = points if points else 0.0
-            summary = epic['fields']['summary']
-            status_category = epic['fields']['status']['statusCategory']['name']
-            epic_url = self.conf['jira_server'] + "/browse/" + key
-            component = epic['fields']['components']
-            component = component.pop() if component else {'name': "General"}
-            component = component['name'].replace(" ", "_")
-            fixVersions = epic['fields']['fixVersions']
-            fixVersions = [v['name'] for v in fixVersions]
-            fixVersions = fixVersions.pop() if fixVersions else "0.0"
-
-            epic_name = _safe_chars(epic_name)
-
-            start_date = None
-            if status_category == "In Progress":
-                start_date = dateutil.parser.parse(epic['fields']['statuscategorychangedate'])
-
-            resolution_date = epic['fields']['resolutiondate']
-            if resolution_date:
-                resolution_date = dateutil.parser.parse(resolution_date)
-                # TODO: Jira can also track actual time spent. Now we just use the estimate as the duration.
-                start_date = resolution_date - dateutil.relativedelta.relativedelta(months=points)
-            else:
-                if start_date:
-                    resolution_date = start_date + dateutil.relativedelta.relativedelta(months=int(points))
-
-            graph[key] = {"name":epic_name, "url":epic_url, "deps":[], "summary": summary, "statusCategory": status_category, "components":component, "points": points, "fixVersions": fixVersions,
-                          "start_date": start_date, "resolution_date": resolution_date, "key": key}
-            issuelinks = epic['fields']['issuelinks']
-
-            for link in issuelinks:
-                if link['type']['outward'] == 'Depends on' and 'outwardIssue' in link:
-                    dep_key = link['outwardIssue']['key']
-                    if self.key_in_set(dep_key):
-                        graph[key]['deps'].append(dep_key)
-
-        return graph
-
-    def get_issues_per_epic(self, project):
-        jql = f"type != Epic AND project = {project}"
-        if self.conf['jira_filter']:
-            for filter in self.conf['jira_filter']:
-                jql += f" AND {filter}"
-        jql += " ORDER BY key"
-        print("Jira query: " + jql)
-        issues = []
-        new_issues = self.jira.get_all_project_issues(project, limit=100, start=0)
-        start_at = 101
-        while new_issues:
-            issues.extend(new_issues)
-            new_issues = self.jira.get_all_project_issues(project, limit=100, start=start_at)
-            start_at += 100
-
-        by_epic = {}
-
-        count = 0
-        for issue in issues:
-            # Skip issues that are closed as duplicates of other epics or won't fix
-            if issue['fields']['resolution'] and (
-                issue['fields']['resolution']['name'] == "Duplicate" or 
-                issue['fields']['resolution']['name'] == "Won't Fix"):
-               continue
-            count += 1
-
-            key = issue['key']
-            epic = issue['fields'][CUSTOM_FIELD['Epic']]
-            points = issue['fields'][CUSTOM_FIELD['Story Points']]
-            points = points if points else 0.0
-            summary = issue['fields']['summary']
-            assignee = issue['fields']['assignee']
-            assignee = assignee['displayName'] if assignee else ""
-            status_category = issue['fields']['status']['statusCategory']['name']
-            issue_url = self.conf['jira_server'] + "/browse/" + key
-            component = issue['fields']['components']
-            component = component.pop() if component else {'name': "General"}
-            component = component['name'].replace(" ", "_")
-            fixVersions = issue['fields']['fixVersions']
-            fixVersions = [v['name'] for v in fixVersions]
-            fixVersions = fixVersions.pop() if fixVersions else "0.0"
-
-            epic = epic if epic else "No Epic"
-
-            start_date = None
-            if status_category == "In Progress":
-                start_date = dateutil.parser.parse(issue['fields']['statuscategorychangedate'])
-
-            resolution_date = issue['fields']['resolutiondate']
-            if resolution_date:
-                resolution_date = dateutil.parser.parse(resolution_date)
-                # TODO: Jira can also track actual time spent. Now we just use the estimate as the duration.
-                start_date = resolution_date - dateutil.relativedelta.relativedelta(months=points)
-            else:
-                if start_date:
-                    resolution_date = start_date + dateutil.relativedelta.relativedelta(months=int(points))
-
-            if not epic in by_epic:
-                by_epic[epic] = []
-            if key == "STAR-170":
-                print(key + " in epic " + epic)
-
-            by_epic[epic].append({"url":issue_url, "deps":[], "summary": summary, "statusCategory": status_category, "components":component, "points": points, "fixVersions": fixVersions,
-                          "start_date": start_date, "resolution_date": resolution_date, "key": key, "assignee": assignee})
-
-        print(count)
-        print(len(issues))
-        return by_epic
 
     def grid_obj(self, graph, project):
         groups = set()
@@ -222,7 +93,7 @@ class Grid:
                     cell = cells[component][rel]
                     obj = cell.pop() if cell else None
                     if obj:
-                        csv += "\t" + obj['key'] + " " + obj['name']
+                        csv += "\t" + obj['key'] + " " + obj['epic_name']
                     else:
                         done_columns[col] = True
                         csv += "\t"
@@ -268,7 +139,7 @@ class Grid:
                     obj = grid[component][rel][key]
 
                     table += "<div>\n"
-                    table += f"<a href=\"{obj['url']}\" title=\"{obj['summary']}\" class=\"{obj['statusCategory'].replace(' ','')}\">{obj['key']} {obj['name']}</a><br>\n"
+                    table += f"<a href=\"{obj['url']}\" title=\"{obj['summary']}\" class=\"{obj['statusCategory'].replace(' ','')}\">{obj['key']} {obj['epic_name']}</a><br>\n"
                     table += self._grid_issues(by_epic, key)
                     table += "</div>\n"
 
@@ -306,9 +177,6 @@ class Grid:
 
     def key_in_set(self, key):
         return key in self._keys
-
-def _safe_chars(string):
-    return re.sub(r'\W', " ", string)
 
 def _depth(graph, epic, d=0):
     if epic['deps']:
