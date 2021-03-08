@@ -27,21 +27,25 @@ class Burnup:
         self.model = JiraModel(my_config)
 
     def get_and_draw(self):
-        for project in self.conf['jira_project'] if self.conf['jira_project'] else []:
-            base = project
-            for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
-                base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
-            if self.conf.args.groupby:
-                base += "_" + self.conf.args.groupby
+        project = "JiraDash"
+        projects = self.conf['jira_project'] if self.conf['jira_project'] else []
+        if len(projects) >= 1:
+            project = "_".join(projects)
 
-            issues = self.model.get_issues()
-            series, date_range = self.generate_series(issues)
+        base = project
+        for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
+            base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
+        if self.conf.args.groupby:
+            base += "_" + self.conf.args.groupby
 
-            csv = self.burnup_csv(series, date_range, project)
-            self.write_csv(csv, f"{base}_burnup")
+        issues = self.model.get_issues()
+        series, date_range = self.generate_series(issues)
 
-            html = self.burnup_html(series, date_range, project)
-            self.write_html(html, f"{base}_burnup")
+        csv = self.burnup_csv(series, date_range, project)
+        self.write_csv(csv, f"{base}_burnup")
+
+        html = self.burnup_html(series, date_range, project)
+        self.write_html(html, f"{base}_burnup")
 
 
     def get_minmax(self, issues):

@@ -35,21 +35,25 @@ class Grid:
         self.model = JiraModel(my_config)
 
     def get_and_draw(self):
-        for project in self.conf['jira_project'] if self.conf['jira_project'] else []:
-            base = project
-            for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
-                base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
-            if self.conf.args.groupby:
-                base += "_" + self.conf.args.groupby
+        project = "JiraDash"
+        projects = self.conf['jira_project'] if self.conf['jira_project'] else []
+        if len(projects) >= 1:
+            project = "_".join(projects)
 
-            epics = self.model.get_epics()
-            by_epic = self.model.get_issues_per_epic()
+        base = project
+        for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
+            base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
+        if self.conf.args.groupby:
+            base += "_" + self.conf.args.groupby
 
-            grid = self.grid_obj(epics, project)
-            csv = self.grid_csv(grid, project)
-            self.write_csv(csv, f"{base}_grid")
-            html = self.grid_html(grid, by_epic, project)
-            self.write_html(html, f"{base}_grid")
+        epics = self.model.get_epics()
+        by_epic = self.model.get_issues_per_epic()
+
+        grid = self.grid_obj(epics, project)
+        csv = self.grid_csv(grid, project)
+        self.write_csv(csv, f"{base}_grid")
+        html = self.grid_html(grid, by_epic, project)
+        self.write_html(html, f"{base}_grid")
 
 
 
