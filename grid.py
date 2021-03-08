@@ -38,7 +38,7 @@ class Grid:
         for project in self.conf['jira_project'] if self.conf['jira_project'] else []:
             base = project
             for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
-                base += "_" + _safe_chars(jira_filter).replace(" ", "_")
+                base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
             if self.conf.args.groupby:
                 base += "_" + self.conf.args.groupby
 
@@ -54,10 +54,7 @@ class Grid:
 
 
     def grid_obj(self, epics, project):
-        groups = set()
-        for obj in epics.values():
-            groups.add(obj['components'])
-        groups = _sort_by_depth(groups, 'components', epics)
+        groups = self.model.get_groups(groupby='components')
 
         grid = {}
         for group in groups:
@@ -165,50 +162,7 @@ class Grid:
         with open(html_file, "w") as f:
             f.write(html)
 
-    def get_keys(self, epics):
-        for epic in epics:
-            # Skip epics that are closed as duplicates of other epics or won't fix
-            if epic['fields']['resolution'] and (
-                epic['fields']['resolution']['name'] == "Duplicate" or 
-                epic['fields']['resolution']['name'] == "Won't Fix"):
-               continue
 
-            self._keys.append(epic['key'])
-
-    def key_in_set(self, key):
-        return key in self._keys
-
-def _depth(epics, epic, d=0):
-    if epic['deps']:
-        return _depth(epics, epics[epic['deps'][0]], d+1)
-    return d
-
-def _group_depth(group, groupby, epics):
-    use_shortest = True if groupby != "fixVersions" else False
-    depth = 9999 if use_shortest else -9999
-    for key, obj in epics.items():
-        if (not groupby) or group == obj[groupby]:
-            new_depth = _depth(epics, obj)
-            if new_depth < depth and use_shortest:
-                depth = new_depth
-            elif new_depth > depth and not use_shortest:
-                depth = new_depth
-    return depth
-
-def _sort_epics_by_depth(group, groupby, epics):
-    pairs = []
-    for key, obj in epics.items():
-        if groupby and obj[groupby] != group:
-            continue
-        pairs.append((key, _depth(epics, obj)))
-
-    pairs.sort(key = lambda x: x[1])
-    return [epic[0] for epic in pairs]
-
-def _sort_by_depth(groups, groupby, epics):
-    pairs = [(group, _group_depth(group, groupby, epics)) for group in groups]
-    pairs.sort(key = lambda x: x[1])
-    return [group[0] for group in pairs]
 
 def mkdir_p(path):
     try:

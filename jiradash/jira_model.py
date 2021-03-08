@@ -10,6 +10,7 @@ import datetime
 import errno
 import json
 from requests import HTTPError
+from operator import itemgetter
 import os
 import re
 import subprocess
@@ -24,6 +25,9 @@ class JiraModel:
         self.jira_client = JiraClient(my_config)
         self.jira_client.conn()
         self.jira = self.jira_client.jira
+
+        self._issues = None
+        self._epics = None
 
     def _build_issues_query(self):
         jql = f"type != Epic"
@@ -62,9 +66,12 @@ class JiraModel:
             yield key, obj
 
     def get_issues(self):
+        if self._issues:
+            return self._issues
+
         issues = {k:v for k,v in self.issues()}
-        issues = self.remove_dead_end_links(issues)
-        return issues
+        self._issues = self.remove_dead_end_links(issues)
+        return self._issues
 
     def _build_epics_query(self):
         jql = f"type = Epic"
@@ -99,15 +106,18 @@ class JiraModel:
             key, obj = self._get_fields(epic)
 
             epic_name = epic['fields'][CUSTOM_FIELD['Epic Name']]
-            epic_name = _safe_chars(epic_name)
+            epic_name = self.safe_chars(epic_name)
             obj['epic_name'] = epic_name
 
             yield key, obj
 
     def get_epics(self):
+        if self._epics:
+            return self._epics
+
         epics = {k:v for k, v in self.epics()}
-        epics = self.remove_dead_end_links(epics)
-        return epics
+        self._epics = self.remove_dead_end_links(epics)
+        return self._epics
 
     def _get_fields(self, issue):
         key = issue['key']
@@ -163,9 +173,8 @@ class JiraModel:
     def get_issues_per_epic(self):
         by_epic = {}
         count = 0
-        for key, obj in self.issues():
+        for obj in self.get_issues().values():
             count += 1
-
             epic = obj['epic']
             if not epic in by_epic:
                 by_epic[epic] = []
@@ -174,6 +183,57 @@ class JiraModel:
         print(count)
         return by_epic
 
-def _safe_chars(string):
-    return re.sub(r'\W', " ", string)
+    def get_groups(self, groupby="components", issue_type="epic", sort="depth"):
+        """
+        Get the set of groups found in either epics or issues.
 
+        :param str groupby: What field in the epics/issues to collect the groups from.
+        :param str issue_type:    Whether to process epics or issues.
+        :param str sort:    Method to sort with.
+        :return:            set() of strings that are the groups found, for example the Jira components.
+        """
+        issues = self._issues if issue_type == "issue" else self._epics
+        assert sort == 'depth', "Only 'depth' is supported as sort method."
+
+        groups = set()
+        for obj in issues.values():
+            groups.add(obj[groupby])
+        return _sort_groups_by_depth(groups, groupby, issues)
+
+
+
+    def safe_chars(self, string):
+        return re.sub(r'\W', " ", string)
+
+
+def _depth(issues, issue, d=0):
+    if issue['deps']:
+        return _depth(issues, issues[issue['deps'][0]], d+1)
+    return d
+
+def _group_depth(group, groupby, epics):
+    use_shortest = True if groupby != "fixVersions" else False
+    depth = 9999 if use_shortest else -9999
+    for key, obj in epics.items():
+        if (not groupby) or group == obj[groupby]:
+            new_depth = _depth(epics, obj)
+            if new_depth < depth and use_shortest:
+                depth = new_depth
+            elif new_depth > depth and not use_shortest:
+                depth = new_depth
+    return depth
+
+def _sort_epics_by_depth(group, groupby, epics):
+    pairs = []
+    for key, obj in epics.items():
+        if groupby and obj[groupby] != group:
+            continue
+        pairs.append((key, _depth(epics, obj)))
+
+    pairs.sort(key = itemgetter(1, 0))
+    return [epic[0] for epic in pairs]
+
+def _sort_groups_by_depth(groups, groupby, epics):
+    pairs = [(group, _group_depth(group, groupby, epics)) for group in groups]
+    pairs.sort(key = itemgetter(1, 0))
+    return [group[0] for group in pairs]

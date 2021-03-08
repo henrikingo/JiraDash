@@ -30,7 +30,7 @@ class Burnup:
         for project in self.conf['jira_project'] if self.conf['jira_project'] else []:
             base = project
             for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
-                base += "_" + _safe_chars(jira_filter).replace(" ", "_")
+                base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
             if self.conf.args.groupby:
                 base += "_" + self.conf.args.groupby
 
@@ -182,42 +182,6 @@ nv.addGraph(generateGraph);
         print(f"Writing {html_file}")
         with open(html_file, "w") as f:
             f.write(html)
-
-def _safe_chars(string):
-    return re.sub(r'\W', " ", string)
-
-def _depth(graph, epic, d=0):
-    if epic['deps']:
-        return _depth(graph, graph[epic['deps'][0]], d+1)
-    return d
-
-def _group_depth(group, groupby, graph):
-    use_shortest = True if groupby != "fixVersions" else False
-    depth = 9999 if use_shortest else -9999
-    for key, obj in graph.items():
-        if (not groupby) or group == obj[groupby]:
-            new_depth = _depth(graph, obj)
-            if new_depth < depth and use_shortest:
-                depth = new_depth
-            elif new_depth > depth and not use_shortest:
-                depth = new_depth
-    return depth
-
-def _sort_epics_by_depth(group, groupby, graph):
-    pairs = []
-    for key, obj in graph.items():
-        if groupby and obj[groupby] != group:
-            continue
-        pairs.append((key, _depth(graph, obj)))
-
-    pairs.sort(key = lambda x: x[1])
-    return [epic[0] for epic in pairs]
-
-def _sort_by_depth(groups, groupby, graph):
-    pairs = [(group, _group_depth(group, groupby, graph)) for group in groups]
-    pairs.sort(key = lambda x: x[1])
-    return [group[0] for group in pairs]
-
 def mkdir_p(path):
     try:
         os.makedirs(path)
