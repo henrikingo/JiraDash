@@ -43,7 +43,7 @@ class JiraModel:
     def _query_issues(self):
         jql = self._build_issues_query()
         new_issues = self.jira.jql(jql, start=0, limit=100)
-        start_at = 101
+        start_at = 100
         while new_issues['issues']:
             print(len(new_issues['issues']))
             for issue in new_issues['issues']:
