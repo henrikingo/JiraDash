@@ -20,19 +20,10 @@ def entry_point(my_config):
     deps.get_and_draw()
 
 class Grid:
-    # TODO: configurable
-    releases = [
-        "stargazer-alpha",
-        "stargazer-alpha2",
-        "stargazer-alpha3",
-        "stargazer-alpha4",
-        "stargazer-beta",
-        "0.0",
-        ]
-
     def __init__(self, my_config):
         self.conf = my_config
         self.model = JiraModel(my_config)
+        self.releases = self.model.get_versions()
 
     def get_and_draw(self):
         project = "JiraDash"
@@ -64,6 +55,7 @@ class Grid:
         for group in groups:
             grid[group] = {}
             for rel in self.releases:
+                #print(rel)
                 grid[group][rel] = {}
 
         for key, obj in epics.items():
@@ -116,7 +108,7 @@ class Grid:
         colwidth = str(int(100/(len(self.releases)+1)))
         head = f"<html>\n<head><title>{project}</title>\n"
         style = """<style type="text/css">
-    table td {padding: 5px; font-family: sans-serif; border-top: 1px solid #ddd; width: """ + colwidth + """%;}
+    table td {padding: 5px; font-family: sans-serif; border-top: 1px solid #ddd;}
     td div {overflow: hidden; height: 2em;}
     td div a {overflow: hidden; height: 1.4em; display: inline-block;}
     a.ToDo {text-decoration: none; color: #666;}

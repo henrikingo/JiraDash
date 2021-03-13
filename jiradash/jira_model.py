@@ -133,7 +133,7 @@ class JiraModel:
         component = component['name'].replace(" ", "_")
         fixVersions = issue['fields']['fixVersions']
         fixVersions = [v['name'] for v in fixVersions]
-        fixVersions = fixVersions.pop() if fixVersions else "0.0"
+        fixVersions = fixVersions.pop() if fixVersions else "never"
 
         created = issue['fields']['created']
         created = dateutil.parser.parse(created) if created else None
@@ -206,6 +206,14 @@ class JiraModel:
             groups.add(obj[groupby])
         return _sort_epics_by_depth(group, groupby, self._epics)
 
+    def get_versions(self):
+        versions = []
+        for project in self.conf['jira_project']:
+            versions += self.jira.get_project_versions(project)
+        #versions.sort(key=lambda v: v['releaseDate'] if 'releaseDate' in v else "9")
+        versions = [v['name'] for v in versions]
+        print(versions)
+        return versions
 
     def safe_chars(self, string):
         return re.sub(r'\W', " ", string)
