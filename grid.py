@@ -105,20 +105,23 @@ class Grid:
             f.write(csv)
 
     def grid_html(self, grid, by_epic, project):
-        colwidth = str(int(100/(len(self.releases)+1)))
+        colwidth = 15
+        tablewidth = str(int(colwidth*(len(self.releases)+1)))
         head = f"<html>\n<head><title>{project}</title>\n"
         style = """<style type="text/css">
-    table td {padding: 5px; font-family: sans-serif; border-top: 1px solid #ddd;}
-    td div {overflow: hidden; height: 2em;}
+    table {width: """ + tablewidth + """em;}
+    table td {padding: 5px; font-family: sans-serif; border-top: 1px solid #ddd; width: """ + str(colwidth) + """em;}
+    foo td div {overflow: hidden; height: 2em;}
     td div a {overflow: hidden; height: 1.4em; display: inline-block;}
     a.ToDo {text-decoration: none; color: #666;}
     a.InProgress {text-decoration: none; color: #090;}
     a.Done {text-decoration: line-through; color: #333;}
 
     td div span {width: 5px; height: 5px; margin-left: 1px; margin-right: 1px; display: inline-block;}
-    td div span.ToDo {border: solid 1px #666;}
-    td div span.InProgress {border: solid 1px #090; background-color: #090;}
-    td div span.Done {border: solid 1px #333; background-color: #333;}
+    td div span.ToDo {border: solid 1px #666; margin-bottom: 2px;}
+    td div span.InProgress {border: solid 1px #090; background-color: #090;margin-bottom: 2px;}
+    td div span.Done {border: solid 1px #333; background-color: #333;margin-bottom: 2px;}
+    td div span a {text-decoration: none;}
 </style>
 """
 
@@ -137,8 +140,9 @@ class Grid:
                     table += "</div>\n"
 
                 table += "</td>\n"
+        table += "</tr>\n</table>\n"
 
-        return head + style + "</head>\n<body>\n" + table + "</body>\n</html>"
+        return head + style + "</head>\n<body style=\"overflow-x: auto;\">\n" + table + "</body>\n</html>"
 
     def _grid_issues(self, by_epic, epic_key):
         html = ""
