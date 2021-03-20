@@ -6,10 +6,9 @@ Create a graph using the "depends on" links and draw a SVG using mermaid-cli syn
 import dateutil.parser
 import dateutil.relativedelta
 import datetime
-import errno
 from jiradash.jira_model import JiraModel
+from jiradash.io import Writer
 from requests import HTTPError
-import os
 import re
 import subprocess
 import sys
@@ -24,27 +23,20 @@ class Grid:
         self.conf = my_config
         self.model = JiraModel(my_config)
         self.releases = self.model.get_versions()
+        self.writer = Writer(my_config)
+        self.project = self.writer.project
 
     def get_and_draw(self):
-        project = "JiraDash"
-        projects = self.conf['jira_project'] if self.conf['jira_project'] else []
-        if len(projects) >= 1:
-            project = "_".join(projects)
-
-        base = project
-        for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
-            base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
-        if self.conf.args.groupby:
-            base += "_" + self.conf.args.groupby
-
         epics = self.model.get_epics()
         by_epic = self.model.get_issues_per_epic()
 
-        grid = self.grid_obj(epics, project)
-        csv = self.grid_csv(grid, project)
-        self.write_csv(csv, f"{base}_grid")
-        html = self.grid_html(grid, by_epic, project)
-        self.write_html(html, f"{base}_grid")
+        grid = self.grid_obj(epics, self.project)
+
+        csv = self.grid_csv(grid, self.project)
+        self.writer.csv(csv)
+
+        html = self.grid_html(grid, by_epic, self.project)
+        self.writer.html(html)
 
 
 
@@ -95,15 +87,6 @@ class Grid:
 
         return csv
 
-    def write_csv(self, csv, csv_file_base):
-        out_dir = self.conf['out_dir']
-        mkdir_p(out_dir)
-
-        csv_file = os.path.join(out_dir, f"{csv_file_base}.csv")
-        print(f"Writing {csv_file}")
-        with open(csv_file, "w") as f:
-            f.write(csv)
-
     def grid_html(self, grid, by_epic, project):
         colwidth = 15
         tablewidth = str(int(colwidth*(len(self.releases)+1)))
@@ -153,22 +136,5 @@ class Grid:
 
         return html
 
-    def write_html(self, html, html_file_base):
-        out_dir = self.conf['out_dir']
-        mkdir_p(out_dir)
-
-        html_file = os.path.join(out_dir, f"{html_file_base}.html")
-        print(f"Writing {html_file}")
-        with open(html_file, "w") as f:
-            f.write(html)
 
 
-
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
