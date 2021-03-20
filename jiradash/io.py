@@ -3,8 +3,8 @@
 Read and write files. Mostly write I guess.
 
 """
-# TODO: Really just using safe_chars(). It could be a utility module?
 import errno
+# TODO: Really just using safe_chars(). It could be a utility module?
 from jiradash.jira_model import JiraModel
 import os
 
@@ -29,17 +29,20 @@ class Writer:
         self.base = f"{self.base}_{self.command}"
         return self.base
 
-    def csv(self, csv):
-        self.write_file(csv, "csv")
+    def csv(self, csv, base=None):
+        self.write_file(csv, extension="csv", base=base)
 
     def html(self, html):
-        self.write_file(html, "html")
+        self.write_file(html, extension="html", base=base)
 
-    def write_file(self, content, extension):
+    def write_file(self, content, extension="", base=None):
+        if base is None:
+            base = self.base
+
         out_dir = self.conf['out_dir']
         mkdir_p(out_dir)
 
-        file_name = os.path.join(out_dir, f"{self.base}.{extension}")
+        file_name = os.path.join(out_dir, f"{base}.{extension}")
         print(f"Writing {file_name}")
         with open(file_name, "w") as f:
             f.write(content)

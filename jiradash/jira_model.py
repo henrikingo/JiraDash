@@ -201,9 +201,6 @@ class JiraModel:
         return _sort_groups_by_depth(groups, groupby, issues)
 
     def get_epics_by_depth(self, group, groupby="components"):
-        groups = set()
-        for obj in self._epics.values():
-            groups.add(obj[groupby])
         return _sort_epics_by_depth(group, groupby, self._epics)
 
     def get_versions(self):

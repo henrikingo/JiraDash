@@ -8,6 +8,7 @@ import dateutil.relativedelta
 import datetime
 import errno
 from jiradash.jira_model import JiraModel
+from jiradash.io import Writer
 from requests import HTTPError
 import os
 import re
@@ -27,29 +28,21 @@ class Gantt:
     def __init__(self, my_config):
         self.conf = my_config
         self.model = JiraModel(my_config)
+        self.writer = Writer(my_config)
+        self.project = self.writer.project
+        self.base = self.writer.base
 
     def get_and_draw(self):
-        project = "JiraDash"
-        projects = self.conf['jira_project'] if self.conf['jira_project'] else []
-        if len(projects) >= 1:
-            project = "_".join(projects)
-
-        base = project
-        for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
-            base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
-        if self.conf.args.groupby:
-            base += "_" + self.conf.args.groupby
-
         epics = self.model.get_epics()
 
-        markup = self.draw_group(epics, project)
-        self.exec_mermaid(markup, f"{base}_gantt")
+        markup = self.draw_group(epics, self.project)
+        self.exec_mermaid(markup, f"{self.base}_gantt")
 
-        csv = self.gantt_csv(epics, project)
-        self.write_csv(csv, f"{base}_gantt")
+        csv = self.gantt_csv(epics, self.project)
+        self.writer.csv(csv)
 
-        csv = self.groups_csv(epics, project)
-        self.write_csv(csv, f"{base}_components")
+        csv = self.groups_csv(epics, self.project)
+        self.writer.csv(csv, base=f"{self.base}_components")
 
 
     def draw_group(self, graph, project):
@@ -154,15 +147,6 @@ class Gantt:
 
         return head + sprints + body
 
-    def write_csv(self, csv, csv_file_base):
-        out_dir = self.conf['out_dir']
-        mkdir_p(out_dir)
-
-        csv_file = os.path.join(out_dir, f"{csv_file_base}.csv")
-        print(f"Writing {csv_file}")
-        with open(csv_file, "w") as f:
-            f.write(csv)
-
     def groups_csv(self, graph, project):
         groupby = self.conf.args.groupby
         groups = {"Epics"}
@@ -180,7 +164,6 @@ class Gantt:
             body += f"{group}\t{points}\n"
 
         return head + sprints + body
-
 
 def mkdir_p(path):
     try:
