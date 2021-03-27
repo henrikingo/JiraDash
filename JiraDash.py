@@ -3,6 +3,7 @@ import configargparse
 import sys
 import os.path
 from requests import HTTPError
+from jiradash.loader import run_command
 
 COMMANDS = [
     "fixversion",
@@ -58,15 +59,7 @@ class MyConfig:
 
 def main(argv):
     my_config = MyConfig(argv)
-
-    module = __import__(my_config['command'][0])
-    func = getattr(module, 'entry_point')
-    func(my_config)
-
-    return
-    exporter = JiraExporter(my_config)
-    exporter.conn()
-    exporter.get_all_issues()
+    run_command(my_config)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
