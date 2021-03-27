@@ -8,6 +8,7 @@ import dateutil.relativedelta
 import datetime
 import errno
 from jiradash.jira_model import JiraModel
+from jiradash.io import Writer
 import json
 from requests import HTTPError
 import os
@@ -25,6 +26,9 @@ class Burnup:
     def __init__(self, my_config):
         self.conf = my_config
         self.model = JiraModel(my_config)
+        self.writer = Writer(my_config)
+        self.project = self.writer.project
+        self.base = self.writer.base
 
     def get_and_draw(self):
         project = "JiraDash"
@@ -41,12 +45,11 @@ class Burnup:
         issues = self.model.get_issues()
         series, date_range = self.generate_series(issues)
 
-        csv = self.burnup_csv(series, date_range, project)
-        self.write_csv(csv, f"{base}_burnup")
+        csv = self.burnup_csv(series, date_range, self.project)
+        self.writer.csv(csv)
 
-        html = self.burnup_html(series, date_range, project)
-        self.write_html(html, f"{base}_burnup")
-
+        html = self.burnup_html(series, date_range, self.project)
+        self.writer.html(html)
 
     def get_minmax(self, issues):
         created_dates = [obj['created_date'] for obj in issues.values() if obj['created_date']]
@@ -98,15 +101,6 @@ class Burnup:
             series['inprogress'][i] = series['inprogress'][i] + series['resolved'][i]
 
         return series, date_range
-
-    def write_csv(self, csv, csv_file_base):
-        out_dir = self.conf['out_dir']
-        mkdir_p(out_dir)
-
-        csv_file = os.path.join(out_dir, f"{csv_file_base}.csv")
-        print(f"Writing {csv_file}")
-        with open(csv_file, "w") as f:
-            f.write(csv)
 
     def burnup_html(self, series, date_range, project):
         days = date_range['days']
@@ -177,20 +171,3 @@ nv.addGraph(generateGraph);
             {'values': resolved, 'key': 'Resolved', 'color': '#111111', 'area': 'true'},
         ]
         return json.dumps(data)
-
-    def write_html(self, html, html_file_base):
-        out_dir = self.conf['out_dir']
-        mkdir_p(out_dir)
-
-        html_file = os.path.join(out_dir, f"{html_file_base}.html")
-        print(f"Writing {html_file}")
-        with open(html_file, "w") as f:
-            f.write(html)
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise

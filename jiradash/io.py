@@ -32,7 +32,7 @@ class Writer:
     def csv(self, csv, base=None):
         self.write_file(csv, extension="csv", base=base)
 
-    def html(self, html):
+    def html(self, html, base=None):
         self.write_file(html, extension="html", base=base)
 
     def write_file(self, content, extension="", base=None):
