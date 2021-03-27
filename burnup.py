@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 """
-Create a graph using the "depends on" links and draw a SVG using mermaid-cli syntax.
+Create a burnup chart using nvd3.
 
 """
 import dateutil.parser
