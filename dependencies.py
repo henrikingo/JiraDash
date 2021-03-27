@@ -6,6 +6,7 @@ Create a graph using the "depends on" links and draw a SVG using mermaid-cli syn
 
 import errno
 from jiradash.jira_model import JiraModel
+from jiradash.io import Writer
 from requests import HTTPError
 import os
 import re
@@ -25,23 +26,15 @@ class Dependencies:
     def __init__(self, my_config):
         self.conf = my_config
         self.model = JiraModel(my_config)
+        self.writer = Writer(my_config)
+        self.project = self.writer.project
+        self.base = self.writer.base
 
     def get_and_draw(self):
-        project = "JiraDash"
-        projects = self.conf['jira_project'] if self.conf['jira_project'] else []
-        if len(projects) >= 1:
-            project = "_".join(projects)
-
-        base = project
-        for jira_filter in self.conf['jira_filter'] if self.conf['jira_filter'] else []:
-            base += "_" + self.model.safe_chars(jira_filter).replace(" ", "_")
-        if self.conf.args.groupby:
-            base += "_" + self.conf.args.groupby
-
         epics = self.model.get_epics()
 
         markup = self.draw_group(epics)
-        self.exec_mermaid(markup, f"{base}_dependencies")
+        self.exec_mermaid(markup, f"{self.base}_dependencies")
         # Backward compatibility
         self.exec_mermaid(markup, "dependencies")
 
@@ -63,7 +56,7 @@ class Dependencies:
             output += f"    subgraph {component}\n"
 
             for key, obj in graph.items():
-                if obj[groupby] != component:
+                if groupby and obj[groupby] != component:
                     continue
 
                 urls += f"    click {key} \"{obj['url']}\" \"{obj['summary']}\"\n"
