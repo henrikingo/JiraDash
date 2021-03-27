@@ -8,7 +8,7 @@ import dateutil.relativedelta
 import datetime
 import errno
 from jiradash.jira_model import JiraModel
-from jiradash.io import Writer
+from jiradash.mermaid_wrapper import Mermaid
 from requests import HTTPError
 import os
 import re
@@ -28,15 +28,16 @@ class Gantt:
     def __init__(self, my_config):
         self.conf = my_config
         self.model = JiraModel(my_config)
-        self.writer = Writer(my_config)
-        self.project = self.writer.project
-        self.base = self.writer.base
+        self.mermaid = Mermaid(my_config)
+        self.writer = self.mermaid
+        self.project = self.mermaid.project
+        self.base = self.mermaid.base
 
     def get_and_draw(self):
         epics = self.model.get_epics()
 
         markup = self.draw_group(epics, self.project)
-        self.exec_mermaid(markup, f"{self.base}_gantt")
+        self.mermaid.exec_mermaid(markup)
 
         csv = self.gantt_csv(epics, self.project)
         self.writer.csv(csv)
@@ -114,19 +115,6 @@ class Gantt:
     def _get_css_class(self, obj):
         css_class = obj['statusCategory'].replace(" ", "")
         return css_class
-
-    def exec_mermaid(self, markup, markup_file_base):
-        out_dir = self.conf['out_dir']
-        mkdir_p(out_dir)
-
-        markup_file = os.path.join(out_dir, f"{markup_file_base}.mermaid")
-        print(f"Writing {markup_file}")
-        with open(markup_file, "w") as f:
-            f.write(markup)
-
-        cmd = ["mmdc", "--input", markup_file, "--output", os.path.join(out_dir, f"{markup_file_base}.svg")]
-        print(cmd)
-        subprocess.run(cmd)
 
     def gantt_csv(self, graph, project):
         groupby = self.conf.args.groupby

@@ -46,6 +46,7 @@ class Writer:
         print(f"Writing {file_name}")
         with open(file_name, "w") as f:
             f.write(content)
+        return file_name
 
 
 def mkdir_p(path):

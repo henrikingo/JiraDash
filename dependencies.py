@@ -6,11 +6,10 @@ Create a graph using the "depends on" links and draw a SVG using mermaid-cli syn
 
 import errno
 from jiradash.jira_model import JiraModel
-from jiradash.io import Writer
+from jiradash.mermaid_wrapper import Mermaid
 from requests import HTTPError
 import os
 import re
-import subprocess
 import sys
 
 def entry_point(my_config):
@@ -26,17 +25,15 @@ class Dependencies:
     def __init__(self, my_config):
         self.conf = my_config
         self.model = JiraModel(my_config)
-        self.writer = Writer(my_config)
-        self.project = self.writer.project
-        self.base = self.writer.base
+        self.mermaid = Mermaid(my_config)
+        self.project = self.mermaid.project
+        self.base = self.mermaid.base
 
     def get_and_draw(self):
         epics = self.model.get_epics()
 
         markup = self.draw_group(epics)
-        self.exec_mermaid(markup, f"{self.base}_dependencies")
-        # Backward compatibility
-        self.exec_mermaid(markup, "dependencies")
+        self.mermaid.exec_mermaid(markup)
 
     def draw_group(self, graph):
         output = "graph RL;\n"
@@ -77,82 +74,3 @@ class Dependencies:
         css_class = obj['statusCategory'].replace(" ", "")
         return css_class
 
-    def exec_mermaid(self, markup, markup_file_base):
-        out_dir = self.conf['out_dir']
-        mkdir_p(out_dir)
-
-        markup_file = os.path.join(out_dir, f"{markup_file_base}.mermaid")
-        print(f"Writing {markup_file}")
-        with open(markup_file, "w") as f:
-            f.write(markup)
-
-        cmd = ["mmdc", "--input", markup_file, "--output", os.path.join(out_dir, f"{markup_file_base}.svg")]
-        print(cmd)
-        subprocess.run(cmd)
-
-    def gantt_csv(self, graph, project):
-        groupby = self.conf.args.groupby
-        groups = set()
-        # initialize
-        if groupby:
-            for obj in graph.values():
-                groups.add(obj[groupby])
-        else:
-            groups = {"Epics"}
-
-        groups = _sort_by_depth(groups, groupby, graph)
-
-        head = f"{project}\n{groupby}\tEpic\tFix version\tEstimate\tResources allocated\tSprints->\n"
-        sprints ="\t\t\t\t\n"  # Add sprints when we know how many there are
-
-        body = ""
-        for group in groups:
-            body += f"\n{group}\n"
-            for key in _sort_epics_by_depth(group, groupby, graph):
-                obj = graph[key]
-                line = f"\t{key} {obj['name']}\t{str(obj['fixVersions'])}\t{obj['points']}\n"
-                body += line
-
-        return head + sprints + body
-
-    def write_csv(self, csv, csv_file_base):
-        out_dir = self.conf['out_dir']
-        mkdir_p(out_dir)
-
-        csv_file = os.path.join(out_dir, f"{csv_file_base}.csv")
-        print(f"Writing {csv_file}")
-        with open(csv_file, "w") as f:
-            f.write(csv)
-
-    def groups_csv(self, graph, project):
-        groupby = self.conf.args.groupby
-        groups = set()
-        # initialize
-        if groupby:
-            for obj in graph.values():
-                groups.add(obj[groupby])
-        else:
-            groups = {"Epics"}
-        groups = _sort_by_depth(groups, groupby, graph)
-
-        head = f"{project}\n{groupby}\tEstimate\tResources allocated\tSprints->\n"
-        sprints ="\t\t\t\t\n"  # Add sprints when we know how many there are
-
-        body = "Totals:\n"
-        for group in groups:
-            points = 0.0
-            for key in _sort_epics_by_depth(group, groupby, graph):
-                points += graph[key]['points']
-            body += f"{group}\t{points}\n"
-
-        return head + sprints + body
-
-
-def mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
