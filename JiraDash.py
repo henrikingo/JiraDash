@@ -11,6 +11,7 @@ COMMANDS = [
     "gantt",
     "grid",
     "burnup",
+    "csvimport",
 ]
 
 
@@ -49,6 +50,7 @@ class MyConfig:
         p.add('--groupby', help="Group epics or issues by this field in mermaid or csv output. Ex: '--groupby components'", choices=['fixVersions', 'components'])
 
         p.add('--out-dir', '-o', help="Directory where to output graphs", default="mermaid_out")
+        p.add('--csvfile', help="CSV input data")
 
         p.add('command', help="command to execute", nargs=1, choices=COMMANDS)
 
