@@ -140,6 +140,7 @@ class Gantt:
         groups = {"Epics"}
         if groupby:
             groups = self.model.get_groups(groupby=groupby)
+        print(groups)
 
         head = f"{project}\n{groupby}\tEstimate\tResources allocated\tSprints->\n"
         sprints ="\t\t\t\t\n"  # Add sprints when we know how many there are

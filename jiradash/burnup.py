@@ -79,7 +79,7 @@ class Burnup:
     def generate_series(self, issues):
         date_range = self.get_minmax(issues)
         days = date_range['max'] - date_range['min']
-        days = days.days
+        days = max(days.days,1)
         date_range['days'] = days
 
         # 3 arrays that have one element per day in date_range
