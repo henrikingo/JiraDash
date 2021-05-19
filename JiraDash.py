@@ -12,6 +12,7 @@ COMMANDS = [
     "grid",
     "burnup",
     "csvimport",
+    "listinput",
 ]
 
 
