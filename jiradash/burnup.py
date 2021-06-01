@@ -83,21 +83,21 @@ class Burnup:
         date_range['days'] = days
 
         # 3 arrays that have one element per day in date_range
-        series = {'issues': [0]*days, 'inprogress': [0]*days, 'resolved': [0]*days}
+        series = {'issues': [0]*(days+1), 'inprogress': [0]*(days+1), 'resolved': [0]*(days+1)}
         for obj in issues.values():
-            series['issues'][ (obj['created_date']-date_range['min']).days - 1] += 1
+            series['issues'][ (obj['created_date']-date_range['min']).days] += 1
             if obj['start_date']:
-                series['inprogress'][ (obj['start_date']-date_range['min']).days - 1] += 1
+                series['inprogress'][ (obj['start_date']-date_range['min']).days] += 1
             if obj['resolution_date']:
-                series['resolved'][ (obj['resolution_date']-date_range['min']).days - 1] += 1
+                series['resolved'][ (obj['resolution_date']-date_range['min']).days] += 1
 
         # Now recode arrays so that each element includes the sum of previous days
-        for i in range(1, days):
+        for i in range(1, days+1):
             series['issues'][i] = series['issues'][i-1] + series['issues'][i]
             series['inprogress'][i] = series['inprogress'][i-1] + series['inprogress'][i]
             series['resolved'][i] = series['resolved'][i-1] + series['resolved'][i]
         # For inprogress, we also want to add already resolved count
-        for i in range(1, days):
+        for i in range(1, days+1):
             series['inprogress'][i] = series['inprogress'][i] + series['resolved'][i]
 
         return series, date_range
@@ -156,8 +156,8 @@ nv.addGraph(generateGraph);
         issues = []
         inprogress = []
         resolved = []
-        for d in range(date_range['days']):
-            date = date_range['min']+datetime.timedelta(days=d+1)
+        for d in range(date_range['days']+1):
+            date = date_range['min']+datetime.timedelta(days=d)
             #date = date.strftime("%Y-%m-%d")
             date = int(time.mktime(date.timetuple())) * 1000
 
